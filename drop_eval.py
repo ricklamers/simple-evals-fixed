@@ -10,14 +10,14 @@ import random
 import re
 import string
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
+import urllib
 
-import blobfile as bf
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from . import common
-from .common import ANSWER_PATTERN, HTML_JINJA
-from .types import Eval, EvalResult, SamplerBase, SingleEvalResult
+import common
+from mmlu_eval import HTML_JINJA
+from stypes import Eval, EvalResult, SamplerBase, SingleEvalResult
 
 """
 From here through _normalize_answer was originally copied from:
@@ -27,6 +27,8 @@ Then cleaned up and modified a bit.
 The rest was originally copied from https://github.com/allenai/allennlp-reading-comprehension/blob/master/allennlp_rc
 /eval/drop_eval.py
 """
+
+ANSWER_PATTERN = r"(?i)Answer\s*:\s*([^\n]+)"
 
 
 def _remove_articles(text: str) -> str:
@@ -245,9 +247,9 @@ class DropEval(Eval):
         self.test_jsonl = (
             "https://openaipublic.blob.core.windows.net/simple-evals/drop_v0_dev.jsonl.gz"
         )
-        with gzip.GzipFile(fileobj=bf.BlobFile(self.train_jsonl, "rb"), mode="rb") as f:
+        with gzip.GzipFile(fileobj=urllib.request.urlopen(self.train_jsonl), mode="rb") as f:
             self.train_samples = list(map(json.loads, f.readlines()))
-        with gzip.GzipFile(fileobj=bf.BlobFile(self.test_jsonl, "rb"), mode="rb") as f:
+        with gzip.GzipFile(fileobj=urllib.request.urlopen(self.test_jsonl), mode="rb") as f:
             self.test_samples = list(map(json.loads, f.readlines()))
             if self._num_examples:
                 self.test_samples = random.Random(self.seed).sample(
@@ -280,7 +282,7 @@ class DropEval(Eval):
                     prompt += """\n
 Think step by step, then write a line of the form "Answer: $ANSWER" at the end of your response.
                     """
-                    prompt_messages = [sampler._pack_message(content=prompt, role="user")]
+                    prompt_messages = [dict(content=prompt, role="user")]
                     response_text = sampler(prompt_messages)
                     match = re.search(ANSWER_PATTERN, response_text)
                     extracted_answer = match.group(1) if match else response_text

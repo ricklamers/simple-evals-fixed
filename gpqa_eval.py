@@ -7,12 +7,15 @@ https://arxiv.org/abs/2311.12022
 import random
 import re
 
-import blobfile as bf
 import pandas
 
-from . import common
-from .common import ANSWER_PATTERN_MULTICHOICE, HTML_JINJA, format_multichoice_question
-from .types import Eval, EvalResult, MessageList, SamplerBase, SingleEvalResult
+import common
+from mmlu_eval import ANSWER_PATTERN, HTML_JINJA, QUERY_TEMPLATE
+from stypes import Eval, EvalResult, SamplerBase, SingleEvalResult
+
+
+def format_question(row):
+    return QUERY_TEMPLATE.format(**row)
 
 
 class GPQAEval(Eval):
@@ -23,12 +26,12 @@ class GPQAEval(Eval):
         num_examples: int | None = None,  # restrict to a subset of the data for debugging
     ):
         df = pandas.read_csv(
-            bf.BlobFile(f"https://openaipublic.blob.core.windows.net/simple-evals/gpqa_{variant}.csv")
+            f"https://openaipublic.blob.core.windows.net/simple-evals/gpqa_{variant}.csv"
         )
         examples = [row.to_dict() for _, row in df.iterrows()]
         rng = random.Random(0)
         if num_examples:
-            assert n_repeats == 1, "n_repeats only supported for num_examples = None"
+            assert n_repeats == 1, "n_repeats only supported for num_examples"
             examples = rng.sample(examples, num_examples)
         examples = examples * n_repeats
         examples = [example | {"permutation": rng.sample(range(4), 4)} for example in examples]
@@ -49,13 +52,9 @@ class GPQAEval(Eval):
             choices_dict = dict(
                 A=choices[0], B=choices[1], C=choices[2], D=choices[3], Question=row["Question"]
             )
-            prompt_messages = [
-                sampler._pack_message(
-                    content=format_multichoice_question(choices_dict), role="user"
-                )
-            ]
+            prompt_messages = [dict(content=format_question(choices_dict), role="user")]
             response_text = sampler(prompt_messages)
-            match = re.search(ANSWER_PATTERN_MULTICHOICE, response_text)
+            match = re.search(ANSWER_PATTERN, response_text)
             extracted_answer = match.group(1) if match else None
             score = 1.0 if extracted_answer == correct_answer else 0.0
             html = common.jinja_env.from_string(HTML_JINJA).render(

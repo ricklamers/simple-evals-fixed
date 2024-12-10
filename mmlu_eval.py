@@ -7,19 +7,28 @@ https://arxiv.org/abs/2009.03300
 import random
 import re
 
-import blobfile as bf
 import pandas
 
-from . import common
-from .common import (
-    HTML_JINJA,
-    MULTILINGUAL_ANSWER_PATTERN_TEMPLATE,
-    MULTILINGUAL_ANSWER_REGEXES,
-    format_multichoice_question,
-    normalize_extracted_answer,
-    normalize_response,
-)
-from .types import Eval, EvalResult, SamplerBase, SingleEvalResult
+import common
+from stypes import Eval, EvalResult, SamplerBase, SingleEvalResult
+
+QUERY_TEMPLATE = """
+Answer the following multiple choice question. The last line of your response should be of the following format: 'ANSWER: $LETTER' (without quotes) where LETTER is one of ABCD. Think step by step before answering.
+
+{Question}
+
+A) {A}
+B) {B}
+C) {C}
+D) {D}
+""".strip()
+
+ANSWER_PATTERN = r"(?i)ANSWER\s*:\s*([A-D])"
+
+
+def format_question(row):
+    return QUERY_TEMPLATE.format(**row)
+
 
 subject2category = {
     "abstract_algebra": "stem",
@@ -83,12 +92,10 @@ subject2category = {
 
 
 class MMLUEval(Eval):
-    def __init__(self, num_examples: int | None = None, language: str = "EN-US"):
-        if language != "EN-US":
-            url = f"https://openaipublic.blob.core.windows.net/simple-evals/mmlu_{language}.csv"
-        else:
-            url = "https://openaipublic.blob.core.windows.net/simple-evals/mmlu.csv"
-        df = pandas.read_csv(bf.BlobFile(url))
+    def __init__(self, num_examples: int | None = None):
+        df = pandas.read_csv(
+            "https://openaipublic.blob.core.windows.net/simple-evals/mmlu.csv"
+        )
         examples = [row.to_dict() for _, row in df.iterrows()]
         if num_examples:
             examples = random.Random(0).sample(examples, num_examples)
@@ -96,19 +103,10 @@ class MMLUEval(Eval):
 
     def __call__(self, sampler: SamplerBase) -> EvalResult:
         def fn(row: dict):
-            prompt_messages = [
-                sampler._pack_message(
-                    content=format_multichoice_question(row), role="user"
-                )
-            ]
-            response_text = normalize_response(sampler(prompt_messages))
-            extracted_answer = None
-            for answer_regex in MULTILINGUAL_ANSWER_REGEXES:
-                regex = MULTILINGUAL_ANSWER_PATTERN_TEMPLATE.format(answer_regex)
-                match = re.search(regex, response_text)
-                if match:
-                    extracted_answer = normalize_extracted_answer(match.group(1))
-                    break
+            prompt_messages = [dict(content=format_question(row), role="user")]
+            response_text = sampler(prompt_messages)
+            match = re.search(ANSWER_PATTERN, response_text)
+            extracted_answer = match.group(1) if match else None
             score = 1.0 if extracted_answer == row["Answer"] else 0.0
             html = common.jinja_env.from_string(HTML_JINJA).render(
                 prompt_messages=prompt_messages,
@@ -119,9 +117,21 @@ class MMLUEval(Eval):
             )
             convo = prompt_messages + [dict(content=response_text, role="assistant")]
             category = subject2category.get(row["Subject"], "other")
-            return SingleEvalResult(
-                html=html, score=score, metrics={category: score}, convo=convo
-            )
+            return SingleEvalResult(html=html, score=score, metrics={category: score}, convo=convo)
 
         results = common.map_with_progress(fn, self.examples)
         return common.aggregate_results(results)
+
+
+HTML_JINJA = """
+<h3>Prompt conversation</h3>
+{% for message in prompt_messages %}
+{{ message_to_html(message) | safe }}
+{% endfor %}
+<h3>Sampled message</h3>
+{{ message_to_html(next_message) | safe }}
+<h3>Results</h3>
+<p>Correct Answer: {{ correct_answer }}</p>
+<p>Extracted Answer: {{ extracted_answer }}</p>
+<p>Score: {{ score }}</p>
+"""

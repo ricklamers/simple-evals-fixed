@@ -1,21 +1,21 @@
 import json
 import argparse
 import pandas as pd
-from . import common
-from .drop_eval import DropEval
-from .gpqa_eval import GPQAEval
-from .humaneval_eval import HumanEval
-from .math_eval import MathEval
-from .mgsm_eval import MGSMEval
-from .mmlu_eval import MMLUEval
-from .simpleqa_eval import SimpleQAEval
-from .sampler.chat_completion_sampler import (
+import common
+from drop_eval import DropEval
+from gpqa_eval import GPQAEval
+from humaneval_eval import HumanEval
+from math_eval import MathEval
+from mgsm_eval import MGSMEval
+from mmlu_eval import MMLUEval
+from simpleqa_eval import SimpleQAEval
+from sampler.chat_completion_sampler import (
     OPENAI_SYSTEM_MESSAGE_API,
     OPENAI_SYSTEM_MESSAGE_CHATGPT,
     ChatCompletionSampler,
 )
-from .sampler.o1_chat_completion_sampler import O1ChatCompletionSampler
-from .sampler.claude_sampler import ClaudeCompletionSampler, CLAUDE_SYSTEM_MESSAGE_LMSYS
+from sampler.o1_chat_completion_sampler import O1ChatCompletionSampler
+from sampler.claude_sampler import ClaudeCompletionSampler, CLAUDE_SYSTEM_MESSAGE_LMSYS
 
 
 def main():
@@ -35,6 +35,11 @@ def main():
 
     models = {
         # chatgpt models:
+        "llama-3.3-70b-specdec_assistant": ChatCompletionSampler(
+            model="llama-3.3-70b-specdec",
+            system_message=OPENAI_SYSTEM_MESSAGE_API,
+            max_tokens=2048,
+        ),
         "gpt-4o-2024-11-20_assistant": ChatCompletionSampler(
             model="gpt-4o-2024-11-20",
             system_message=OPENAI_SYSTEM_MESSAGE_API,
@@ -134,7 +139,7 @@ def main():
 
     evals = {
         eval_name: get_evals(eval_name, args.debug)
-        for eval_name in ["simpleqa", "mmlu", "math", "gpqa", "mgsm", "drop"]
+        for eval_name in ["humaneval"]
     }
     print(evals)
     debug_suffix = "_DEBUG" if args.debug else ""

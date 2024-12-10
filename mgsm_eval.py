@@ -7,12 +7,11 @@ https://arxiv.org/abs/2210.03057 reference: https://github.com/google-research/u
 
 import re
 from typing import Optional
+import urllib
 
-import blobfile as bf
-
-from . import common
-from .mmlu_eval import HTML_JINJA
-from .types import Eval, EvalResult, SamplerBase, SingleEvalResult
+import common
+from mmlu_eval import HTML_JINJA
+from stypes import Eval, EvalResult, SamplerBase, SingleEvalResult
 
 ALL_LANGUAGES = ["bn", "de", "en", "es", "fr", "ja", "ru", "sw", "te", "th", "zh"]
 LATIN_LANGUAGES = ["de", "en", "es", "fr", "sw"]
@@ -109,8 +108,8 @@ def score_mgsm(target: str, prediction: str) -> bool:
 def get_lang_examples(lang: str) -> list[dict[str, str]]:
     fpath = LANG_TO_FPATH[lang]
     examples = []
-    with bf.BlobFile(fpath, "r") as f:
-        for line in f:
+    with urllib.request.urlopen(fpath) as f:
+        for line in f.read().decode("utf-8").splitlines():
             inputs, targets = line.strip().split("\t")
             if "." in targets:
                 raise ValueError(f"targets {targets} contains a decimal point.")
@@ -159,9 +158,7 @@ class MGSMEval(Eval):
             correct_answer = example["targets"]
             instructoin = LANG_TO_INSTRUCTIONS[language]
             prompt_messages = [
-                sampler._pack_message(
-                    content=instructoin.format(input=example["inputs"]), role="user"
-                )
+                dict(content=instructoin.format(input=example["inputs"]), role="user")
             ]
             try:
                 response_text = sampler(prompt_messages)
